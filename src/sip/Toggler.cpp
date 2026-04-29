@@ -5,6 +5,7 @@
 #include "SIPBuddy.h"
 #include "Toggler.h"
 #include "ErrorBus.h"
+#include "AppSettings.h"
 
 Q_LOGGING_CATEGORY(lcToggler, "gonnect.sip.toggler")
 
@@ -48,11 +49,32 @@ bool Toggler::initialize()
 
     m_description = m_settings.value("description", "").toString();
 
-    m_subscribe = m_settings.value("subscribe", "").toString();
-    m_toggle = m_settings.value("toggle", "").toString();
-    if (m_toggle.isEmpty() || m_subscribe.isEmpty()) {
-        qCCritical(lcToggler) << "ignoring toggler" << m_id << "without toggle/subscribe";
+    const QString modeStr = m_settings.value("mode", "stateful").toString();
+    if (modeStr == "stateless") {
+        m_mode = Stateless;
+    } else if (modeStr == "stateful") {
+        m_mode = Stateful;
+    } else {
+        qCCritical(lcToggler) << "ignoring toggler" << m_id << "with unknown mode" << modeStr;
         return false;
+    }
+
+    if (m_mode == Stateless) {
+        m_toggleOn = m_settings.value("toggleOn", "").toString();
+        m_toggleOff = m_settings.value("toggleOff", "").toString();
+        if (m_toggleOn.isEmpty() && m_toggleOff.isEmpty()) {
+            qCCritical(lcToggler) << "ignoring stateless toggler" << m_id
+                                  << "without toggleOn/toggleOff";
+            return false;
+        }
+        m_localActive = m_settings.value("state", false).toBool();
+    } else {
+        m_subscribe = m_settings.value("subscribe", "").toString();
+        m_toggle = m_settings.value("toggle", "").toString();
+        if (m_toggle.isEmpty() || m_subscribe.isEmpty()) {
+            qCCritical(lcToggler) << "ignoring toggler" << m_id << "without toggle/subscribe";
+            return false;
+        }
     }
 
     m_display = 0;
@@ -72,16 +94,18 @@ bool Toggler::initialize()
         }
     }
 
-    m_buddy = new SIPBuddy(m_account, m_subscribe);
-    connect(m_buddy, &SIPBuddy::statusChanged, this, [this]() {
-        m_timeoutTimer.stop();
+    if (m_mode == Stateful) {
+        m_buddy = new SIPBuddy(m_account, m_subscribe);
+        connect(m_buddy, &SIPBuddy::statusChanged, this, [this]() {
+            m_timeoutTimer.stop();
 
-        m_busy = false;
-        Q_EMIT busyChanged();
+            m_busy = false;
+            Q_EMIT busyChanged();
 
-        Q_EMIT activeChanged();
-    });
-    m_buddy->initialize();
+            Q_EMIT activeChanged();
+        });
+        m_buddy->initialize();
+    }
 
     m_settings.endGroup();
     return true;
@@ -89,6 +113,25 @@ bool Toggler::initialize()
 
 void Toggler::setActive(bool value)
 {
+    if (m_mode == Stateless) {
+        if (m_localActive == value) {
+            return;
+        }
+        const QString &uri = value ? m_toggleOn : m_toggleOff;
+        m_localActive = value;
+
+        AppSettings persisted;
+        persisted.beginGroup(m_id);
+        persisted.setValue("state", value);
+        persisted.endGroup();
+
+        Q_EMIT activeChanged();
+        if (!uri.isEmpty()) {
+            SIPCallManager::instance().call(uri, true);
+        }
+        return;
+    }
+
     if (!m_busy && m_buddy) {
         bool active = m_buddy->status() == SIPBuddyState::BUSY;
         if (active != value) {

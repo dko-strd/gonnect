@@ -33,8 +33,18 @@ public:
     };
     Q_ENUM(DISPLAY)
 
+    enum Mode {
+        Stateful,
+        Stateless,
+    };
+    Q_ENUM(Mode)
+
     bool initialize();
-    bool isActive() const { return m_buddy ? m_buddy->status() == SIPBuddyState::BUSY : false; }
+    bool isActive() const
+    {
+        return m_mode == Stateless ? m_localActive
+                                   : (m_buddy && m_buddy->status() == SIPBuddyState::BUSY);
+    }
     bool isBusy() const { return m_busy; }
     void setActive(bool value);
 
@@ -58,11 +68,15 @@ private:
     QString m_label;
     QString m_toggle;
     QString m_subscribe;
+    QString m_toggleOn;
+    QString m_toggleOff;
 
     SIPBuddy *m_buddy = nullptr;
     SIPAccount *m_account = nullptr;
 
     unsigned m_display = 0;
+    Mode m_mode = Stateful;
 
     bool m_busy = false;
+    bool m_localActive = false;
 };
