@@ -10,15 +10,8 @@ import QtQuick.Window
 T.Menu {
     id: control
 
-    implicitWidth: {
-        let v = 0
-        for (const child of control.contentChildren) {
-            if (child instanceof MenuItem) {
-                v = Math.max(v, child.implicitWidth)
-            }
-        }
-        return v
-    }
+    implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
+                            implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
                              implicitContentHeight + topPadding + bottomPadding)
 
